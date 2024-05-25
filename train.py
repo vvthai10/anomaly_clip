@@ -2,7 +2,7 @@ import AnomalyCLIP_lib
 import torch
 import argparse
 import torch.nn.functional as F
-from prompt_ensemble import AnomalyCLIP_PromptLearner
+from prompt_ensemble import AnomalyCLIP_PromptLearner, AnomalyCLIP_VisionLearner
 from loss import FocalLoss, BinaryDiceLoss
 from utils import normalize
 from dataset import Dataset
@@ -12,6 +12,9 @@ import numpy as np
 import os
 import random
 from utils import get_transform
+from CLIP.clip import create_model
+
+
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -40,8 +43,17 @@ def train(args):
     prompt_learner.to(device)
     model.to(device)
     model.visual.DAPM_replace(DPAM_layer = 20)
+
+    clip_model = create_model(model_name='ViT-L-14-336', img_size=240, device=device,
+                              pretrained='openai', require_pretrained=True)
+    clip_model.eval()
+
+    vision_learner = AnomalyCLIP_VisionLearner(clip_model=clip_model, features=[6, 12, 18, 24]).to(device)
+    vision_learner.eval()
     ##########################################################################################
     optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+    seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=0.0001, betas=(0.5, 0.999))
+    # det_optimizer = torch.optim.Adam(list(vision_learner.det_adapters.parameters()), lr=0.0001, betas=(0.5, 0.999))
 
     # losses
     loss_focal = FocalLoss()
@@ -49,6 +61,7 @@ def train(args):
     
     
     model.eval()
+    vision_learner.eval()
     prompt_learner.train()
     for epoch in tqdm(range(args.epoch), position=0, leave=True):
         model.eval()
@@ -69,7 +82,8 @@ def train(args):
                 # DPAM_layer represents the number of layer refined by DPAM from top to bottom
                 # DPAM_layer = 1, no DPAM is used
                 # DPAM_layer = 20 as default
-                image_features, patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
+                # image_features, patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
+                image_features, patch_features = vision_learner.encode_image_learn(image)
                 image_features = image_features / image_features.norm(dim=-1, keepdim=True)
                     
            ####################################
@@ -105,9 +119,13 @@ def train(args):
                 loss += loss_dice(similarity_map_list[i][:, 1, :, :], gt)
                 loss += loss_dice(similarity_map_list[i][:, 0, :, :], 1-gt)
 
+            total_loss = loss+image_loss
+            total_loss.requires_grad_(True)
             optimizer.zero_grad()
-            (loss+image_loss).backward()
+            seg_optimizer.zero_grad()
+            total_loss.backward()
             optimizer.step()
+            seg_optimizer.step()
             loss_list.append(loss.item())
         # logs
         if (epoch + 1) % args.print_freq == 0:
@@ -135,7 +153,7 @@ if __name__ == '__main__':
     parser.add_argument("--epoch", type=int, default=15, help="epochs")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=2, help="batch size")
-    parser.add_argument("--image_size", type=int, default=518, help="image size")
+    parser.add_argument("--image_size", type=int, default=240, help="image size")
     parser.add_argument("--print_freq", type=int, default=1, help="print frequency")
     parser.add_argument("--save_freq", type=int, default=1, help="save frequency")
     parser.add_argument("--seed", type=int, default=111, help="random seed")

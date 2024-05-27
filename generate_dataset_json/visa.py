@@ -50,5 +50,5 @@ class VisASolver(object):
 
 
 if __name__ == '__main__':
-    runner = VisASolver(root='./data/Visa')
+    runner = VisASolver(root='./data/visa')
     runner.run()

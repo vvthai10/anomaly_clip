@@ -20,14 +20,14 @@ class IsbiSolver(object):
                 species = os.listdir(f'{cls_dir}/{phase}')
                 for specie in species:
                     is_abnormal = True if specie not in ['good'] else False
-                    img_names = os.listdir(f'{cls_dir}/{phase}/{specie}')
-                    mask_names = os.listdir(f'{cls_dir}/ISBI2016_ISIC_Part1_Test_GroundTruth/') if is_abnormal else None
+                    img_names = os.listdir(f'{cls_dir}/{phase}/{specie}/images')
+                    mask_names = os.listdir(f'{cls_dir}/{phase}/{specie}/masks') if is_abnormal else None
                     img_names.sort()
                     mask_names.sort() if mask_names is not None else None
                     for idx, img_name in enumerate(img_names):
                         info_img = dict(
-                            img_path=f'{cls_name}/{phase}/{specie}/{img_name}',
-                            mask_path=f'{cls_name}/ISBI2016_ISIC_Part1_Test_GroundTruth/{mask_names[idx]}' if is_abnormal else '',
+                            img_path=f'{cls_name}/{phase}/{specie}/images/{img_name}',
+                            mask_path=f'{cls_name}/{phase}/{specie}/masks/{mask_names[idx]}' if is_abnormal else '',
                             cls_name=cls_name,
                             specie_name=specie,
                             anomaly=1 if is_abnormal else 0,
@@ -44,5 +44,5 @@ class IsbiSolver(object):
         print('normal_samples', normal_samples, 'anomaly_samples', anomaly_samples)
 
 if __name__ == '__main__':
-    runner = IsbiSolver(root='/remote-home/iot_zhouqihang/data/ISBI')
+    runner = IsbiSolver(root='./data/medical_test/ISBI')
     runner.run()

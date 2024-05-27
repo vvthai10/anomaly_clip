@@ -27,8 +27,8 @@ class ClinicDBSolver(object):
                 mask_names.sort() if mask_names is not None else None
                 for idx, img_name in enumerate(img_names):
                     info_img = dict(
-                        img_path=f'{cls_dir}/images/{img_name}',
-                        mask_path=f'{cls_dir}/masks/{mask_names[idx]}',
+                        img_path=f'images/{img_name}',
+                        mask_path=f'masks/{mask_names[idx]}',
                         cls_name=cls_name,
                         specie_name='',
                         anomaly=1
@@ -47,5 +47,5 @@ class ClinicDBSolver(object):
 
 
 if __name__ == '__main__':
-    runner = ClinicDBSolver(root='/remote-home/iot_zhouqihang/data/medical/Kvasir')
+    runner = ClinicDBSolver(root='./data/medical_test/Kvasir')
     runner.run()

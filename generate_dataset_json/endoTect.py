@@ -51,5 +51,5 @@ class HyperSolver(object):
 
 
 if __name__ == '__main__':
-    runner = HyperSolver(root='/remote-home/iot_zhouqihang/data/medical/EndoTect_2020_Segmentation_Test_Dataset')
+    runner = HyperSolver(root='./data/medical_test/EndoTect')
     runner.run()

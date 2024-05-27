@@ -273,8 +273,8 @@ class VisionTransformer(nn.Module):
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
 
-        #x = self.ln_post(x[:, 0, :])
-        x = self.ln_post(x) # return both cls token and image tokens
+        x = self.ln_post(x[:, 0, :])
+        # x = self.ln_post(x) # return both cls token and image tokens
 
         if self.proj is not None:
             x = x @ self.proj

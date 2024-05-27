@@ -3,6 +3,7 @@ import torch
 import argparse
 import torch.nn.functional as F
 from prompt_ensemble import AnomalyCLIP_PromptLearner
+from vision_ensemble import AnomalyCLIP_VisionLearner
 from loss import FocalLoss, BinaryDiceLoss
 from utils import normalize
 from dataset import Dataset
@@ -32,10 +33,13 @@ def train(args):
     model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details = AnomalyCLIP_parameters)
     model.eval()
 
+    clip_model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details=None)
+    model.eval()
+
     train_data = Dataset(root=args.train_data_path, transform=preprocess, target_transform=target_transform, dataset_name = args.dataset)
     train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
 
-  ##########################################################################################
+    ##########################################################################################
     prompt_learner = AnomalyCLIP_PromptLearner(model.to("cpu"), AnomalyCLIP_parameters)
     prompt_learner.to(device)
     model.to(device)
@@ -43,15 +47,24 @@ def train(args):
     ##########################################################################################
     optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
 
+    ##########################################################################################
+    vision_learner = AnomalyCLIP_VisionLearner(clip_model, [6, 12, 18, 24])
+    vision_learner.to(device)
+    ##########################################################################################
+    seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+
+
     # losses
     loss_focal = FocalLoss()
     loss_dice = BinaryDiceLoss()
     
     
     model.eval()
+    vision_learner.eval()
     prompt_learner.train()
     for epoch in tqdm(range(args.epoch), position=0, leave=True):
         model.eval()
+        vision_learner.eval()
         prompt_learner.train()
         loss_list = []
         image_loss_list = []
@@ -69,7 +82,8 @@ def train(args):
                 # DPAM_layer represents the number of layer refined by DPAM from top to bottom
                 # DPAM_layer = 1, no DPAM is used
                 # DPAM_layer = 20 as default
-                image_features, patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
+                # image_features, patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
+                image_features, patch_features = vision_learner.encode_image_learn(image)
                 image_features = image_features / image_features.norm(dim=-1, keepdim=True)
                     
            ####################################
@@ -94,7 +108,7 @@ def train(args):
             # similarity_map_list.append(similarity_map)
             for idx, patch_feature in enumerate(patch_features):
                 if idx >= args.feature_map_layer[0]:
-                    patch_feature = patch_feature/ patch_feature.norm(dim = -1, keepdim = True)
+                    patch_feature = patch_feature / patch_feature.norm(dim = -1, keepdim = True)
                     similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
                     similarity_map = AnomalyCLIP_lib.get_similarity_map(similarity[:, 1:, :], args.image_size).permute(0, 3, 1, 2)
                     similarity_map_list.append(similarity_map)
@@ -106,7 +120,9 @@ def train(args):
                 loss += loss_dice(similarity_map_list[i][:, 0, :, :], 1-gt)
 
             optimizer.zero_grad()
+            seg_optimizer.zero_grad()
             (loss+image_loss).backward()
+            seg_optimizer.step()
             optimizer.step()
             loss_list.append(loss.item())
         # logs

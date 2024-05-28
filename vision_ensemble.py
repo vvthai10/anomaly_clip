@@ -34,7 +34,7 @@ class AnomalyCLIP_VisionLearner(nn.Module):
         self.image_encoder = clip_model.visual
         self.features = features
         self.seg_adapters = nn.ModuleList([ClipAdapter(1024, bottleneck=768) for i in range(len(features))])
-        # self.det_adapters = nn.ModuleList([ClipAdapter(1024, bottleneck=768) for i in range(len(features))])
+        self.det_adapters = nn.ModuleList([ClipAdapter(1024, bottleneck=768) for i in range(len(features))])
 
     def encode_image_learn(self, x):
         # image = self.image_encoder.conv1(image)
@@ -79,7 +79,7 @@ class AnomalyCLIP_VisionLearner(nn.Module):
 
         attn_out = []
         seg_patch_tokens = []
-        # det_patch_tokens = []
+        det_patch_tokens = []
 
         for i in range(24):
             if i + 1 == 12:
@@ -89,12 +89,12 @@ class AnomalyCLIP_VisionLearner(nn.Module):
                 x = self.image_encoder.transformer.resblocks[i](x)
             if (i + 1) in self.features:
                 seg_adapt_med, seg_adapt_out = self.seg_adapters[self.features.index(i + 1)](x)
-                # det_adapt_med, det_adapt_out = self.det_adapters[self.features.index(i + 1)](image)
+                det_adapt_med, det_adapt_out = self.det_adapters[self.features.index(i + 1)](x)
 
-                x = 0.9 * x + 0.1 * seg_adapt_out
+                x = 0.8 * x + 0.1 * seg_adapt_out + 0.1 * det_adapt_out
 
                 seg_patch_tokens.append(seg_adapt_med)
-                # det_patch_tokens.append(det_adapt_med)
+                det_patch_tokens.append(det_adapt_med)
 
         # TODO: Handle attention_map
         # B, C, L = attn_out[0].shape
@@ -110,14 +110,13 @@ class AnomalyCLIP_VisionLearner(nn.Module):
         # out_attn = torch.cat(out_attn)
 
         seg_patch_tokens = [seg_patch_tokens[t].permute(1, 0, 2) for t in range(len(seg_patch_tokens))]
-        # det_patch_tokens = [det_patch_tokens[t].permute(1, 0, 2) for t in range(len(det_patch_tokens))]
+        det_patch_tokens = [det_patch_tokens[t].permute(1, 0, 2) for t in range(len(det_patch_tokens))]
 
         x = x.permute(1, 0, 2)
         # pooled, tokens = self.image_encoder._global_pool(x)
-        # x = self.ln_post(x[:, 0, :])
         pooled = self.image_encoder.ln_post(x[:, 0, :])
 
         if self.image_encoder.proj is not None:
             pooled = pooled @ self.image_encoder.proj
 
-        return pooled, seg_patch_tokens
+        return pooled, seg_patch_tokens, det_patch_tokens

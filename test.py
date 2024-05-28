@@ -3,6 +3,7 @@ import torch
 import argparse
 import torch.nn.functional as F
 from prompt_ensemble import AnomalyCLIP_PromptLearner
+from vision_ensemble import AnomalyCLIP_VisionLearner
 from loss import FocalLoss, BinaryDiceLoss
 from utils import normalize
 from dataset import Dataset
@@ -43,6 +44,9 @@ def test(args):
     model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details = AnomalyCLIP_parameters)
     model.eval()
 
+    clip_model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details=None)
+    model.eval()
+
     preprocess, target_transform = get_transform(args)
     test_data = Dataset(root=args.data_path, transform=preprocess, target_transform=target_transform, dataset_name = args.dataset)
     test_dataloader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=False)
@@ -75,6 +79,10 @@ def test(args):
     text_features = torch.stack(torch.chunk(text_features, dim = 0, chunks = 2), dim = 1)
     text_features = text_features/text_features.norm(dim=-1, keepdim=True)
 
+    vision_learner = AnomalyCLIP_VisionLearner(clip_model, [6, 12, 18, 24])
+    vision_learner.seg_adapters.load_state_dict(checkpoint["seg_adapters"])
+    vision_learner.to(device)
+
 
     model.to(device)
     for idx, items in enumerate(tqdm(test_dataloader)):
@@ -87,7 +95,7 @@ def test(args):
         results[cls_name[0]]['gt_sp'].extend(items['anomaly'].detach().cpu())
 
         with torch.no_grad():
-            image_features, patch_features = model.encode_image(image, features_list, DPAM_layer = 20)
+            image_features, patch_features = vision_learner.encode_image_learn(image)
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
             text_probs = image_features @ text_features.permute(0, 2, 1)
@@ -96,7 +104,7 @@ def test(args):
             anomaly_map_list = []
             for idx, patch_feature in enumerate(patch_features):
                 if idx >= args.feature_map_layer[0]:
-                    patch_feature = patch_feature/ patch_feature.norm(dim = -1, keepdim = True)
+                    patch_feature = patch_feature / patch_feature.norm(dim = -1, keepdim = True)
                     similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
                     similarity_map = AnomalyCLIP_lib.get_similarity_map(similarity[:, 1:, :], args.image_size)
                     anomaly_map = (similarity_map[...,1] + 1 - similarity_map[...,0])/2.0
@@ -115,7 +123,7 @@ def test(args):
     image_ap_list = []
     pixel_auroc_list = []
     pixel_aupro_list = []
-    for obj in obj_list:
+    for obj in tqdm(obj_list):
         table = []
         table.append(obj)
         results[obj]['imgs_masks'] = torch.cat(results[obj]['imgs_masks'])
@@ -176,9 +184,9 @@ if __name__ == '__main__':
     # paths
     parser.add_argument("--data_path", type=str, default="./data/visa", help="path to test dataset")
     parser.add_argument("--save_path", type=str, default='./results/', help='path to save results')
-    parser.add_argument("--checkpoint_path", type=str, default='./checkpoint/', help='path to checkpoint')
+    parser.add_argument("--checkpoint_path", type=str, default='./checkpoint/epoch_20.pth', help='path to checkpoint')
     # model
-    parser.add_argument("--dataset", type=str, default='mvtec')
+    parser.add_argument("--dataset", type=str, default='visa')
     parser.add_argument("--features_list", type=int, nargs="+", default=[6, 12, 18, 24], help="features used")
     parser.add_argument("--image_size", type=int, default=518, help="image size")
     parser.add_argument("--depth", type=int, default=9, help="image size")

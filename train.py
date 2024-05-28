@@ -42,6 +42,8 @@ def train(args):
     ##########################################################################################
     prompt_learner = AnomalyCLIP_PromptLearner(model.to("cpu"), AnomalyCLIP_parameters)
     prompt_learner.to(device)
+    for name, param in prompt_learner.named_parameters():
+        param.requires_grad = True
     model.to(device)
     model.visual.DAPM_replace(DPAM_layer = 20)
     ##########################################################################################
@@ -50,6 +52,8 @@ def train(args):
     ##########################################################################################
     vision_learner = AnomalyCLIP_VisionLearner(clip_model, [6, 12, 18, 24])
     vision_learner.to(device)
+    for name, param in vision_learner.named_parameters():
+        param.requires_grad = True
     ##########################################################################################
     seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
 
@@ -136,11 +140,11 @@ def train(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("AnomalyCLIP", add_help=True)
-    parser.add_argument("--train_data_path", type=str, default="./data/visa", help="train dataset path")
+    parser.add_argument("--train_data_path", type=str, default="./data/mvtec", help="train dataset path")
     parser.add_argument("--save_path", type=str, default='./checkpoint', help='path to save results')
 
 
-    parser.add_argument("--dataset", type=str, default='visa', help="train dataset name")
+    parser.add_argument("--dataset", type=str, default='mvtec', help="train dataset name")
 
     parser.add_argument("--depth", type=int, default=9, help="image size")
     parser.add_argument("--n_ctx", type=int, default=12, help="zero shot")

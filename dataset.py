@@ -32,6 +32,8 @@ def generate_class_info(dataset_name):
         obj_list = ['chest']
     elif dataset_name == 'thyroid':
         obj_list = ['thyroid']
+    elif dataset_name == 'BrainMRI':
+        obj_list = ['brain']
     for k, index in zip(obj_list, range(len(obj_list))):
         class_name_map_class_id[k] = index
 

@@ -182,18 +182,18 @@ def test(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("AnomalyCLIP", add_help=True)
     # paths
-    parser.add_argument("--data_path", type=str, default="./data/visa", help="path to test dataset")
+    parser.add_argument("--data_path", type=str, default="./data/BrainMRI", help="path to test dataset")
     parser.add_argument("--save_path", type=str, default='./results/', help='path to save results')
     parser.add_argument("--checkpoint_path", type=str, default='./checkpoint/epoch_20.pth', help='path to checkpoint')
     # model
-    parser.add_argument("--dataset", type=str, default='visa')
+    parser.add_argument("--dataset", type=str, default='BrainMRI')
     parser.add_argument("--features_list", type=int, nargs="+", default=[6, 12, 18, 24], help="features used")
     parser.add_argument("--image_size", type=int, default=518, help="image size")
     parser.add_argument("--depth", type=int, default=9, help="image size")
     parser.add_argument("--n_ctx", type=int, default=12, help="zero shot")
     parser.add_argument("--t_n_ctx", type=int, default=4, help="zero shot")
     parser.add_argument("--feature_map_layer", type=int,  nargs="+", default=[0, 1, 2, 3], help="zero shot")
-    parser.add_argument("--metrics", type=str, default='image-pixel-level')
+    parser.add_argument("--metrics", type=str, default='image-level')
     parser.add_argument("--seed", type=int, default=111, help="random seed")
     parser.add_argument("--sigma", type=int, default=4, help="zero shot")
     

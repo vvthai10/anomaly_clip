@@ -11,7 +11,7 @@ class MpddSolver(object):
         self.meta_path = f'{root}/meta.json'
 
     def run(self):
-        info = dict(train={}, test={})
+        info = dict(valid={}, test={})
         anomaly_samples = 0
         normal_samples = 0
         for cls_name in self.CLSNAMES:

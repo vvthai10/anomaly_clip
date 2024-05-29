@@ -51,7 +51,7 @@ def train(args):
     model.to(device)
     model.visual.DAPM_replace(DPAM_layer = 20)
     ##########################################################################################
-    optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+    optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=0.001, betas=(0.5, 0.999))
 
     ##########################################################################################
     vision_learner = AnomalyCLIP_VisionLearner(clip_model, [6, 12, 18, 24])
@@ -59,9 +59,9 @@ def train(args):
     for name, param in vision_learner.named_parameters():
         param.requires_grad = True
     ##########################################################################################
-    seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=args.learning_rate,
+    seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=0.0001,
                                      betas=(0.5, 0.999))
-    det_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=args.learning_rate,
+    det_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=0.0001,
                                      betas=(0.5, 0.999))
 
     # losses
@@ -170,7 +170,7 @@ if __name__ == '__main__':
     parser.add_argument("--feature_map_layer", type=int, nargs="+", default=[0, 1, 2, 3], help="zero shot")
     parser.add_argument("--features_list", type=int, nargs="+", default=[6, 12, 18, 24], help="features used")
 
-    parser.add_argument("--epoch", type=int, default=50, help="epochs")
+    parser.add_argument("--epoch", type=int, default=15, help="epochs")
     parser.add_argument("--learning_rate", type=float, default=0.0001, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=8, help="batch size")
     parser.add_argument("--image_size", type=int, default=518, help="image size")

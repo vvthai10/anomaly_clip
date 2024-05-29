@@ -81,6 +81,7 @@ def test(args):
 
     vision_learner = AnomalyCLIP_VisionLearner(clip_model, [6, 12, 18, 24])
     vision_learner.seg_adapters.load_state_dict(checkpoint["seg_adapters"])
+    vision_learner.det_adapters.load_state_dict(checkpoint["det_adapters"])
     vision_learner.to(device)
 
 
@@ -95,14 +96,25 @@ def test(args):
         results[cls_name[0]]['gt_sp'].extend(items['anomaly'].detach().cpu())
 
         with torch.no_grad():
-            image_features, patch_features = vision_learner.encode_image_learn(image)
+            image_features, seg_patch_features, det_patch_features = vision_learner.encode_image_learn(image)
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
             text_probs = image_features @ text_features.permute(0, 2, 1)
             text_probs = (text_probs/0.07).softmax(-1)
             text_probs = text_probs[:, 0, 1]
+
+            anomaly_score = 0
+            for idx, patch_feature in enumerate(det_patch_features):
+                if idx >= args.feature_map_layer[0]:
+                    patch_feature = patch_feature / patch_feature.norm(dim=-1, keepdim=True)
+                    similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
+                    similarity = similarity[:, :, 1]
+                    det_score = torch.mean(similarity, dim=-1)
+                    anomaly_score += det_score
+
+
             anomaly_map_list = []
-            for idx, patch_feature in enumerate(patch_features):
+            for idx, patch_feature in enumerate(seg_patch_features):
                 if idx >= args.feature_map_layer[0]:
                     patch_feature = patch_feature / patch_feature.norm(dim = -1, keepdim = True)
                     similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
@@ -113,10 +125,10 @@ def test(args):
             anomaly_map = torch.stack(anomaly_map_list)
             
             anomaly_map = anomaly_map.sum(dim = 0)
-            results[cls_name[0]]['pr_sp'].extend(text_probs.detach().cpu())
+            results[cls_name[0]]['pr_sp'].extend(anomaly_score.cpu())
             anomaly_map = torch.stack([torch.from_numpy(gaussian_filter(i, sigma = args.sigma)) for i in anomaly_map.detach().cpu()], dim = 0 )
             results[cls_name[0]]['anomaly_maps'].append(anomaly_map)
-            # visualizer(items['img_path'], anomaly_map.detach().cpu().numpy(), args.image_size, args.save_path, cls_name)
+            visualizer(items['img_path'], anomaly_map.detach().cpu().numpy(), args.image_size, args.save_path, cls_name)
 
     table_ls = []
     image_auroc_list = []
@@ -126,6 +138,12 @@ def test(args):
     for obj in tqdm(obj_list):
         table = []
         table.append(obj)
+        tensor_array = torch.tensor(results[obj]['pr_sp'])
+        min_val = torch.min(tensor_array)
+        max_val = torch.max(tensor_array)
+        normalized_tensors = (tensor_array - min_val) / (max_val - min_val)
+        normalized_tensor_list = [torch.tensor(val.item()) for val in normalized_tensors]
+        results[obj]['pr_sp'] = normalized_tensor_list
         results[obj]['imgs_masks'] = torch.cat(results[obj]['imgs_masks'])
         results[obj]['anomaly_maps'] = torch.cat(results[obj]['anomaly_maps']).detach().cpu().numpy()
         if args.metrics == 'image-level':
@@ -184,7 +202,7 @@ if __name__ == '__main__':
     # paths
     parser.add_argument("--data_path", type=str, default="./data/BrainMRI", help="path to test dataset")
     parser.add_argument("--save_path", type=str, default='./results/', help='path to save results')
-    parser.add_argument("--checkpoint_path", type=str, default='./checkpoint/epoch_20.pth', help='path to checkpoint')
+    parser.add_argument("--checkpoint_path", type=str, default='./checkpoint/epoch_11_v3.pth', help='path to checkpoint')
     # model
     parser.add_argument("--dataset", type=str, default='BrainMRI')
     parser.add_argument("--features_list", type=int, nargs="+", default=[6, 12, 18, 24], help="features used")

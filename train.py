@@ -119,9 +119,10 @@ def train(args):
                 loss += loss_dice(similarity_map_list[i][:, 1, :, :], gt)
                 loss += loss_dice(similarity_map_list[i][:, 0, :, :], 1 - gt)
 
+            total_loss = (loss + image_loss) / 2
             optimizer.zero_grad()
             seg_optimizer.zero_grad()
-            (loss + image_loss).backward()
+            total_loss.backward()
             seg_optimizer.step()
             optimizer.step()
             loss_list.append(loss.item())
@@ -143,7 +144,7 @@ if __name__ == '__main__':
     parser.add_argument("--train_data_path", type=str, default="./data/medical", help="train dataset path")
     parser.add_argument("--save_path", type=str, default='./checkpoint', help='path to save results')
 
-    parser.add_argument("--dataset", type=str, default='medical', help="train dataset name")
+    parser.add_argument("--dataset", type=str, default='medical_brain', help="train dataset name")
 
     parser.add_argument("--depth", type=int, default=9, help="image size")
     parser.add_argument("--n_ctx", type=int, default=12, help="zero shot")
@@ -154,7 +155,7 @@ if __name__ == '__main__':
     parser.add_argument("--epoch", type=int, default=15, help="epochs")
     parser.add_argument("--learning_rate", type=float, default=0.0001, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=8, help="batch size")
-    parser.add_argument("--image_size", type=int, default=518, help="image size")
+    parser.add_argument("--image_size", type=int, default=240, help="image size")
     parser.add_argument("--print_freq", type=int, default=1, help="print frequency")
     parser.add_argument("--save_freq", type=int, default=1, help="save frequency")
     parser.add_argument("--seed", type=int, default=111, help="random seed")

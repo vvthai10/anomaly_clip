@@ -196,7 +196,7 @@ if __name__ == '__main__':
     # model
     parser.add_argument("--dataset", type=str, default='BrainMRI')
     parser.add_argument("--features_list", type=int, nargs="+", default=[6, 12, 18, 24], help="features used")
-    parser.add_argument("--image_size", type=int, default=518, help="image size")
+    parser.add_argument("--image_size", type=int, default=240, help="image size")
     parser.add_argument("--depth", type=int, default=9, help="image size")
     parser.add_argument("--n_ctx", type=int, default=12, help="zero shot")
     parser.add_argument("--t_n_ctx", type=int, default=4, help="zero shot")

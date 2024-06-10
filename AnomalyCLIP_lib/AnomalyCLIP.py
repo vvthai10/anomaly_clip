@@ -375,19 +375,19 @@ class VisionTransformer(nn.Module):
 
         x = x.permute(1, 0, 2)  # NLD -> LND
         [x, x_ori], patch_tokens = self.transformer(x, features_list, DPAM_layer = DPAM_layer, ffn = ffn)
-        
 
-        if True:
-            patch_token_list = []
-            for patch_token in patch_tokens:
-                patch_token = self.ln_post(patch_token.permute(1, 0, 2)) @ self.proj  # LND -> NLD
-                patch_token_list.append(patch_token)
-            patch_tokens = patch_token_list
+        return x_ori[0, :, :] @ self.proj, patch_tokens
 
-            return x_ori[0, :, :] @ self.proj, patch_tokens
+        # if True:
+        #     patch_token_list = []
+        #     for patch_token in patch_tokens:
+        #         patch_token = self.ln_post(patch_token.permute(1, 0, 2)) @ self.proj  # LND -> NLD
+        #         patch_token_list.append(patch_token)
+        #     patch_tokens = patch_token_list
+        #
+        #     return x_ori[0, :, :] @ self.proj, patch_tokens
 
-
-        return x
+        # return x
 
 
 from thop import profile

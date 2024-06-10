@@ -3,6 +3,7 @@ import torch
 import argparse
 import torch.nn.functional as F
 from prompt_ensemble import AnomalyCLIP_PromptLearner
+from vision_ensemble import AnomalyCLIP_VisionLearner
 from loss import FocalLoss, BinaryDiceLoss
 from utils import normalize
 from dataset import Dataset
@@ -35,13 +36,19 @@ def train(args):
     train_data = Dataset(root=args.train_data_path, transform=preprocess, target_transform=target_transform, dataset_name = args.dataset)
     train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
 
-  ##########################################################################################
+    ##########################################################################################
     prompt_learner = AnomalyCLIP_PromptLearner(model.to("cpu"), AnomalyCLIP_parameters)
     prompt_learner.to(device)
     model.to(device)
     model.visual.DAPM_replace(DPAM_layer = 20)
     ##########################################################################################
     optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+
+    ##########################################################################################
+    vision_learner = AnomalyCLIP_VisionLearner(features=[6, 12, 18, 24])
+    vision_learner.to(device)
+    ##########################################################################################
+    vision_optimizer = torch.optim.Adam(list(vision_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
 
     # losses
     loss_focal = FocalLoss()
@@ -69,25 +76,21 @@ def train(args):
                 # DPAM_layer represents the number of layer refined by DPAM from top to bottom
                 # DPAM_layer = 1, no DPAM is used
                 # DPAM_layer = 20 as default
-                image_features, patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
-                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+                ori_image_features, ori_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
+
+            image_features, patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
                     
-           ####################################
+            ####################################
             prompts, tokenized_prompts, compound_prompts_text = prompt_learner(cls_id = None)
             text_features = model.encode_text_learn(prompts, tokenized_prompts, compound_prompts_text).float()
             text_features = torch.stack(torch.chunk(text_features, dim = 0, chunks = 2), dim = 1)
             text_features = text_features/text_features.norm(dim=-1, keepdim=True)
-            # text_features = text_features.squeeze(0).t()
 
-            # features level
-            # text_probs = image_features @ text_features  # .permute(0, 2, 1)
-            # text_probs = text_probs / 0.07
-            # text_probs_loss = F.cross_entropy(text_probs, label.long().cuda())
             # Apply DPAM surgery
             text_probs = image_features.unsqueeze(1) @ text_features.permute(0, 2, 1)
             text_probs = text_probs[:, 0, ...]/0.07
-            text_probs = text_probs.squeeze()
-            image_loss = F.cross_entropy(text_probs, label.long().cuda())
+            image_loss = F.cross_entropy(text_probs.squeeze(), label.long().cuda())
             image_loss_list.append(image_loss.item())
             #########################################################################
             similarity_map_list = []
@@ -106,8 +109,10 @@ def train(args):
                 loss += loss_dice(similarity_map_list[i][:, 0, :, :], 1-gt)
 
             optimizer.zero_grad()
+            vision_optimizer.zero_grad()
             (loss+image_loss).backward()
             optimizer.step()
+            vision_optimizer.step()
             loss_list.append(loss.item())
         # logs
         if (epoch + 1) % args.print_freq == 0:
@@ -116,7 +121,8 @@ def train(args):
         # save model
         if (epoch + 1) % args.save_freq == 0:
             ckp_path = os.path.join(args.save_path, 'epoch_' + str(epoch + 1) + '.pth')
-            torch.save({"prompt_learner": prompt_learner.state_dict()}, ckp_path)
+            torch.save({"prompt_learner": prompt_learner.state_dict(),
+                        "vision_learner": vision_learner.state_dict()}, ckp_path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("AnomalyCLIP", add_help=True)

@@ -3,6 +3,7 @@ import torch
 import argparse
 import torch.nn.functional as F
 from prompt_ensemble import AnomalyCLIP_PromptLearner
+from vision_ensemble import AnomalyCLIP_VisionLearner
 from loss import FocalLoss, BinaryDiceLoss
 from utils import normalize
 from dataset import Dataset
@@ -75,6 +76,12 @@ def test(args):
     text_features = torch.stack(torch.chunk(text_features, dim = 0, chunks = 2), dim = 1)
     text_features = text_features/text_features.norm(dim=-1, keepdim=True)
 
+    ##########################################################################################
+    vision_learner = AnomalyCLIP_VisionLearner(features=[6, 12, 18, 24])
+    vision_learner.load_state_dict(checkpoint["vision_learner"])
+    vision_learner.to(device)
+    ##########################################################################################
+
 
     model.to(device)
     for idx, items in enumerate(tqdm(test_dataloader)):
@@ -87,7 +94,8 @@ def test(args):
         results[cls_name[0]]['gt_sp'].extend(items['anomaly'].detach().cpu())
 
         with torch.no_grad():
-            image_features, patch_features = model.encode_image(image, features_list, DPAM_layer = 20)
+            ori_image_features, ori_patch_features = model.encode_image(image, args.features_list, DPAM_layer=20)
+            image_features, patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
             text_probs = image_features @ text_features.permute(0, 2, 1)

@@ -32,7 +32,7 @@ def generate_class_info(dataset_name):
         obj_list = ['chest']
     elif dataset_name == 'thyroid':
         obj_list = ['thyroid']
-    elif dataset_name == 'brain':
+    elif dataset_name == 'BrainMRI':
         obj_list = ['brain']
     elif dataset_name == 'medical':
         obj_list = ['brain', 'liver', 'retina_resc']

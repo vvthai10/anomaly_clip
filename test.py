@@ -81,6 +81,7 @@ def test(args):
 
     vision_learner = AnomalyCLIP_VisionLearner(clip_model, [6, 12, 18, 24])
     vision_learner.seg_adapters.load_state_dict(checkpoint["seg_adapters"])
+    vision_learner.classifi_adapter.load_state_dict(checkpoint["classifi_adapter"])
     vision_learner.to(device)
 
 

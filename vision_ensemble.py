@@ -28,13 +28,27 @@ class ClipAdapter(nn.Module):
         return x, y
 
 
+class ClassifiAdapter(nn.Module):
+    def __init__(self, c_in, bottleneck=384):
+        super(ClassifiAdapter, self).__init__()
+        self.fc1 = nn.Sequential(
+            nn.Linear(c_in, bottleneck, bias=False),
+            nn.ReLU(inplace=False),
+            nn.Linear(bottleneck, c_in, bias=False),
+            nn.SiLU(inplace=False)
+        )
+
+    def forward(self, x):
+        y = self.fc1(x)
+        return y
+
 class AnomalyCLIP_VisionLearner(nn.Module):
     def __init__(self, clip_model, features):
         super().__init__()
         self.image_encoder = clip_model.visual
         self.features = features
         self.seg_adapters = nn.ModuleList([ClipAdapter(1024, bottleneck=768) for i in range(len(features))])
-        # self.det_adapters = nn.ModuleList([ClipAdapter(1024, bottleneck=768) for i in range(len(features))])
+        self.classifi_adapter = ClassifiAdapter(768, 384)
 
     def encode_image_learn(self, x):
         # image = self.image_encoder.conv1(image)
@@ -79,7 +93,6 @@ class AnomalyCLIP_VisionLearner(nn.Module):
 
         attn_out = []
         seg_patch_tokens = []
-        # det_patch_tokens = []
 
         for i in range(24):
             if i + 1 == 12:
@@ -89,12 +102,10 @@ class AnomalyCLIP_VisionLearner(nn.Module):
                 x = self.image_encoder.transformer.resblocks[i](x)
             if (i + 1) in self.features:
                 seg_adapt_med, seg_adapt_out = self.seg_adapters[self.features.index(i + 1)](x)
-                # det_adapt_med, det_adapt_out = self.det_adapters[self.features.index(i + 1)](x)
 
                 x = 0.9 * x + 0.1 * seg_adapt_out
 
                 seg_patch_tokens.append(seg_adapt_med)
-                # det_patch_tokens.append(det_adapt_med)
 
         # TODO: Handle attention_map
         # B, C, L = attn_out[0].shape
@@ -110,7 +121,6 @@ class AnomalyCLIP_VisionLearner(nn.Module):
         # out_attn = torch.cat(out_attn)
 
         seg_patch_tokens = [seg_patch_tokens[t].permute(1, 0, 2) for t in range(len(seg_patch_tokens))]
-        # det_patch_tokens = [det_patch_tokens[t].permute(1, 0, 2) for t in range(len(det_patch_tokens))]
 
         x = x.permute(1, 0, 2)
         # pooled, tokens = self.image_encoder._global_pool(x)
@@ -118,5 +128,7 @@ class AnomalyCLIP_VisionLearner(nn.Module):
 
         if self.image_encoder.proj is not None:
             pooled = pooled @ self.image_encoder.proj
+
+        pooled = self.classifi_adapter(pooled)
 
         return pooled, seg_patch_tokens

@@ -3,7 +3,8 @@ import json
 
 
 class MpddSolver(object):
-    CLSNAMES = ['brain', 'liver', 'retina_resc']
+    CLSNAMES = ['Chest_AD']
+    # CLSNAMES = ['Brain_AD', 'Histopathology_AD', 'Liver_AD', 'Retina_OCT2017_AD', 'Retina_RESC_AD']
     CLSNAMES_HAFT = ['chest', 'histopathology', 'retina_oct']
 
     def __init__(self, root='./data/medical'):

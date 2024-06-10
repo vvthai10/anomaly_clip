@@ -61,6 +61,8 @@ def train(args):
     ##########################################################################################
     seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=0.0001,
                                      betas=(0.5, 0.999))
+    class_optimizer = torch.optim.Adam(list(vision_learner.classifi_adapter.parameters()), lr=0.0001,
+                                     betas=(0.5, 0.999))
 
     # losses
     loss_focal = FocalLoss()
@@ -100,6 +102,7 @@ def train(args):
             text_probs = image_features.unsqueeze(1) @ text_features.permute(0, 2, 1)
             text_probs = text_probs[:, 0, ...] / 0.07
             text_probs = text_probs.squeeze()
+            text_probs = text_probs.softmax(-1)
             image_loss = F.cross_entropy(text_probs, label.long().cuda())
             image_loss_list.append(image_loss.item())
 
@@ -119,10 +122,12 @@ def train(args):
                 loss += loss_dice(similarity_map_list[i][:, 1, :, :], gt)
                 loss += loss_dice(similarity_map_list[i][:, 0, :, :], 1 - gt)
 
-            total_loss = (loss + image_loss) / 2
+            total_loss = 0.9*loss + image_loss
             optimizer.zero_grad()
             seg_optimizer.zero_grad()
+            class_optimizer.zero_grad()
             total_loss.backward()
+            class_optimizer.step()
             seg_optimizer.step()
             optimizer.step()
             loss_list.append(loss.item())
@@ -136,15 +141,16 @@ def train(args):
         if (epoch + 1) % args.save_freq == 0:
             ckp_path = os.path.join(args.save_path, 'epoch_' + str(epoch + 1) + '.pth')
             torch.save({"prompt_learner": prompt_learner.state_dict(),
+                        "classifi_adapter": vision_learner.classifi_adapter.state_dict(),
                         'seg_adapters': vision_learner.seg_adapters.state_dict()}, ckp_path)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("AnomalyCLIP", add_help=True)
-    parser.add_argument("--train_data_path", type=str, default="./data/medical", help="train dataset path")
+    parser.add_argument("--train_data_path", type=str, default="./data/BrainMRI", help="train dataset path")
     parser.add_argument("--save_path", type=str, default='./checkpoint', help='path to save results')
 
-    parser.add_argument("--dataset", type=str, default='medical_brain', help="train dataset name")
+    parser.add_argument("--dataset", type=str, default='BrainMRI', help="train dataset name")
 
     parser.add_argument("--depth", type=int, default=9, help="image size")
     parser.add_argument("--n_ctx", type=int, default=12, help="zero shot")
@@ -155,7 +161,7 @@ if __name__ == '__main__':
     parser.add_argument("--epoch", type=int, default=15, help="epochs")
     parser.add_argument("--learning_rate", type=float, default=0.0001, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=8, help="batch size")
-    parser.add_argument("--image_size", type=int, default=240, help="image size")
+    parser.add_argument("--image_size", type=int, default=518, help="image size")
     parser.add_argument("--print_freq", type=int, default=1, help="print frequency")
     parser.add_argument("--save_freq", type=int, default=1, help="save frequency")
     parser.add_argument("--seed", type=int, default=111, help="random seed")

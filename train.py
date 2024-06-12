@@ -78,8 +78,7 @@ def train(args):
                 # DPAM_layer = 20 as default
                 ori_image_features, ori_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
 
-            image_features, patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            det_patch_features, seg_patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
                     
             ####################################
             prompts, tokenized_prompts, compound_prompts_text = prompt_learner(cls_id = None)
@@ -88,16 +87,26 @@ def train(args):
             text_features = text_features/text_features.norm(dim=-1, keepdim=True)
 
             # Apply DPAM surgery
+            image_loss = 0
+
+            image_features = ori_image_features / ori_image_features.norm(dim=-1, keepdim=True)
             text_probs = image_features.unsqueeze(1) @ text_features.permute(0, 2, 1)
             text_probs = text_probs[:, 0, ...]/0.07
-            image_loss = F.cross_entropy(text_probs.squeeze(), label.long().cuda())
+            image_loss = image_loss + F.cross_entropy(text_probs.squeeze(), label.long().cuda())
+
+            for idx, patch_feature in enumerate(det_patch_features):
+                patch_feature = patch_feature / patch_feature.norm(dim=-1, keepdim=True)
+                similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
+                similarity = similarity.permute(0, 2, 1)
+                det_score = torch.mean(similarity, dim=-1)
+                image_loss = image_loss + F.cross_entropy(det_score.squeeze(), label.long().cuda())
             image_loss_list.append(image_loss.item())
             #########################################################################
             similarity_map_list = []
             # similarity_map_list.append(similarity_map)
-            for idx, patch_feature in enumerate(patch_features):
+            for idx, patch_feature in enumerate(seg_patch_features):
                 if idx >= args.feature_map_layer[0]:
-                    patch_feature = patch_feature/ patch_feature.norm(dim = -1, keepdim = True)
+                    patch_feature = patch_feature / patch_feature.norm(dim = -1, keepdim = True)
                     similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
                     similarity_map = AnomalyCLIP_lib.get_similarity_map(similarity[:, 1:, :], args.image_size).permute(0, 3, 1, 2)
                     similarity_map_list.append(similarity_map)
@@ -126,11 +135,11 @@ def train(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("AnomalyCLIP", add_help=True)
-    parser.add_argument("--train_data_path", type=str, default="./data/visa", help="train dataset path")
+    parser.add_argument("--train_data_path", type=str, default="./data/BrainMRI", help="train dataset path")
     parser.add_argument("--save_path", type=str, default='./checkpoint', help='path to save results')
 
 
-    parser.add_argument("--dataset", type=str, default='visa', help="train dataset name")
+    parser.add_argument("--dataset", type=str, default='BrainMRI', help="train dataset name")
 
     parser.add_argument("--depth", type=int, default=9, help="image size")
     parser.add_argument("--n_ctx", type=int, default=12, help="zero shot")
@@ -141,7 +150,7 @@ if __name__ == '__main__':
     parser.add_argument("--epoch", type=int, default=15, help="epochs")
     parser.add_argument("--learning_rate", type=float, default=0.001, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=2, help="batch size")
-    parser.add_argument("--image_size", type=int, default=518, help="image size")
+    parser.add_argument("--image_size", type=int, default=240, help="image size")
     parser.add_argument("--print_freq", type=int, default=1, help="print frequency")
     parser.add_argument("--save_freq", type=int, default=1, help="save frequency")
     parser.add_argument("--seed", type=int, default=111, help="random seed")

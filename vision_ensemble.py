@@ -22,13 +22,11 @@ class SegAdapter(nn.Module):
         return y
 
 class DetAdapter(nn.Module):
-    def __init__(self, c_in, bottleneck=384):
+    def __init__(self, c_in, bottleneck=768):
         super(DetAdapter, self).__init__()
         self.fc1 = nn.Sequential(
             nn.Linear(c_in, bottleneck, bias=False),
-            nn.ReLU(inplace=False),
-            nn.Linear(bottleneck, c_in, bias=False),
-            nn.SiLU(inplace=False)
+            nn.LeakyReLU(inplace=False)
         )
 
     def forward(self, x):
@@ -40,13 +38,17 @@ class AnomalyCLIP_VisionLearner(nn.Module):
         super().__init__()
         self.features = features
         self.seg_adapters = nn.ModuleList([SegAdapter(1024, bottleneck=768) for i in range(len(features))])
-        self.det_adapter = DetAdapter(768, 384)
+        self.det_adapters = nn.ModuleList([DetAdapter(1024, bottleneck=768) for i in range(len(features))])
 
     def encoder_vision(self, image_features, patch_features):
-        update_image_features = self.det_adapter(image_features)
-        update_patch_features = []
+        # update_image_features = self.det_adapter(image_features)
+        update_patch_seg_features = []
+        update_patch_det_features = []
         for idx, patch_feature in enumerate(patch_features):
-            update_patch_feature = self.seg_adapters[idx].forward(patch_feature)
-            update_patch_features.append(update_patch_feature)
+            update_patch_seg_feature = self.seg_adapters[idx].forward(patch_feature)
+            update_patch_seg_features.append(update_patch_seg_feature.permute(1, 0, 2))
 
-        return update_image_features, update_patch_features
+            update_patch_det_feature = self.det_adapters[idx].forward(patch_feature)
+            update_patch_det_features.append(update_patch_det_feature.permute(1, 0, 2))
+
+        return update_patch_det_features, update_patch_seg_features

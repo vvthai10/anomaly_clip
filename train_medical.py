@@ -136,15 +136,18 @@ def train(args):
                 vision_seg_optimizer.step()
                 vision_det_optimizer.step()
                 loss_list.append(loss.item())
+            else:
+                total_loss = image_loss
+                total_loss.requires_grad_(True)
+                optimizer.zero_grad()
+                vision_det_optimizer.zero_grad()
+                total_loss.backward()
+                optimizer.step()
+                vision_det_optimizer.step()
+                loss_list.append(loss.item())
 
-            total_loss = image_loss
-            total_loss.requires_grad_(True)
-            optimizer.zero_grad()
-            vision_det_optimizer.zero_grad()
-            total_loss.backward()
-            optimizer.step()
-            vision_det_optimizer.step()
-            loss_list.append(loss.item())
+        train_data.shuffle_dataset()
+        train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=1, shuffle=True)
 
         # logs
         if (epoch + 1) % args.print_freq == 0:

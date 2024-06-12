@@ -6,7 +6,7 @@ from prompt_ensemble import AnomalyCLIP_PromptLearner
 from vision_ensemble import AnomalyCLIP_VisionLearner
 from loss import FocalLoss, BinaryDiceLoss
 from utils import normalize
-from dataset import Dataset
+from dataset import Dataset, DatasetMedical
 from logger import get_logger
 from tqdm import tqdm
 import numpy as np
@@ -33,10 +33,11 @@ def train(args):
     model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details = AnomalyCLIP_parameters)
     model.eval()
 
-    train_data = Dataset(root=args.train_data_path, transform=preprocess, target_transform=target_transform, dataset_name = args.dataset)
-    train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
+    train_data = DatasetMedical(root=args.train_data_path, batch_size=args.batch_size, img_size=args.image_size, transform=preprocess, target_transform=target_transform, dataset_name = args.dataset)
+    train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=1, shuffle=True)
 
-    ##########################################################################################
+
+    #########################################################################################
     prompt_learner = AnomalyCLIP_PromptLearner(model.to("cpu"), AnomalyCLIP_parameters)
     prompt_learner.to(device)
     for name, param in prompt_learner.named_parameters():
@@ -53,7 +54,8 @@ def train(args):
     for name, param in vision_learner.named_parameters():
         param.requires_grad = True
     ##########################################################################################
-    vision_optimizer = torch.optim.Adam(list(vision_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+    vision_seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+    vision_det_optimizer = torch.optim.Adam(list(vision_learner.det_adapters.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
 
     # losses
     loss_focal = FocalLoss()
@@ -70,8 +72,10 @@ def train(args):
         image_loss_list = []
 
         for items in tqdm(train_dataloader, position=0, leave=True):
-            image = items['img'].to(device)
+            image = items['img'].squeeze().to("cuda")
             label = items['anomaly']
+            label = torch.cat(label, dim=0)
+            cls_idx = items['cls_idx'].item()
 
             gt = items['img_mask'].squeeze().to(device)
             gt[gt > 0.5] = 1
@@ -105,30 +109,43 @@ def train(args):
                 det_score = torch.mean(similarity, dim=-1)
                 image_loss = image_loss + F.cross_entropy(det_score.squeeze(), label.long().cuda())
             image_loss_list.append(image_loss.item())
-            #########################################################################
-            similarity_map_list = []
-            # similarity_map_list.append(similarity_map)
-            for idx, patch_feature in enumerate(seg_patch_features):
-                if idx >= args.feature_map_layer[0]:
-                    patch_feature = patch_feature / patch_feature.norm(dim = -1, keepdim = True)
-                    similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
-                    similarity_map = AnomalyCLIP_lib.get_similarity_map(similarity[:, 1:, :], args.image_size).permute(0, 3, 1, 2)
-                    similarity_map_list.append(similarity_map)
 
-            loss = 0
-            for i in range(len(similarity_map_list)):
-                loss += loss_focal(similarity_map_list[i], gt)
-                loss += loss_dice(similarity_map_list[i][:, 1, :, :], gt)
-                loss += loss_dice(similarity_map_list[i][:, 0, :, :], 1-gt)
+            if cls_idx > 0:
+                similarity_map_list = []
+                # similarity_map_list.append(similarity_map)
+                for idx, patch_feature in enumerate(seg_patch_features):
+                    if idx >= args.feature_map_layer[0]:
+                        patch_feature = patch_feature / patch_feature.norm(dim = -1, keepdim = True)
+                        similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
+                        similarity_map = AnomalyCLIP_lib.get_similarity_map(similarity[:, 1:, :], args.image_size).permute(0, 3, 1, 2)
+                        similarity_map_list.append(similarity_map)
 
-            total_loss = loss+image_loss
+                loss = 0
+                for i in range(len(similarity_map_list)):
+                    loss += loss_focal(similarity_map_list[i], gt)
+                    loss += loss_dice(similarity_map_list[i][:, 1, :, :], gt)
+                    loss += loss_dice(similarity_map_list[i][:, 0, :, :], 1-gt)
+
+                total_loss = loss+image_loss
+                total_loss.requires_grad_(True)
+                optimizer.zero_grad()
+                vision_seg_optimizer.zero_grad()
+                vision_det_optimizer.zero_grad()
+                total_loss.backward()
+                optimizer.step()
+                vision_seg_optimizer.step()
+                vision_det_optimizer.step()
+                loss_list.append(loss.item())
+
+            total_loss = image_loss
             total_loss.requires_grad_(True)
             optimizer.zero_grad()
-            vision_optimizer.zero_grad()
+            vision_det_optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
-            vision_optimizer.step()
+            vision_det_optimizer.step()
             loss_list.append(loss.item())
+
         # logs
         if (epoch + 1) % args.print_freq == 0:
             logger.info('epoch [{}/{}], loss:{:.4f}, image_loss:{:.4f}'.format(epoch + 1, args.epoch, np.mean(loss_list), np.mean(image_loss_list)))
@@ -141,11 +158,11 @@ def train(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("AnomalyCLIP", add_help=True)
-    parser.add_argument("--train_data_path", type=str, default="./data/BrainMRI", help="train dataset path")
+    parser.add_argument("--train_data_path", type=str, default="./data/medical", help="train dataset path")
     parser.add_argument("--save_path", type=str, default='./checkpoint', help='path to save results')
 
 
-    parser.add_argument("--dataset", type=str, default='BrainMRI', help="train dataset name")
+    parser.add_argument("--dataset", type=str, default='medical', help="train dataset name")
 
     parser.add_argument("--depth", type=int, default=9, help="image size")
     parser.add_argument("--n_ctx", type=int, default=12, help="zero shot")

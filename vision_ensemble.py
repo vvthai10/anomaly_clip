@@ -13,7 +13,9 @@ class SegAdapter(nn.Module):
     def __init__(self, c_in, bottleneck=768):
         super(SegAdapter, self).__init__()
         self.fc1 = nn.Sequential(
-            nn.Linear(c_in, bottleneck, bias=False),
+            nn.Linear(768, 384, bias=False),
+            nn.LeakyReLU(inplace=False),
+            nn.Linear(384, 768, bias=False),
             nn.LeakyReLU(inplace=False)
         )
 
@@ -25,7 +27,9 @@ class DetAdapter(nn.Module):
     def __init__(self, c_in, bottleneck=768):
         super(DetAdapter, self).__init__()
         self.fc1 = nn.Sequential(
-            nn.Linear(c_in, bottleneck, bias=False),
+            nn.Linear(768, 384, bias=False),
+            nn.LeakyReLU(inplace=False),
+            nn.Linear(384, 768, bias=False),
             nn.LeakyReLU(inplace=False)
         )
 

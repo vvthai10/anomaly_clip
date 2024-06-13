@@ -61,10 +61,13 @@ def train(args):
     ##########################################################################################
     seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=0.0001,
                                      betas=(0.5, 0.999))
+    det_optimizer = torch.optim.Adam(list(vision_learner.det_adapters.parameters()), lr=0.0001,
+                                     betas=(0.5, 0.999))
 
     # losses
     loss_focal = FocalLoss()
     loss_dice = BinaryDiceLoss()
+    loss_bce = torch.nn.BCEWithLogitsLoss()
 
     model.eval()
     vision_learner.eval()
@@ -84,10 +87,10 @@ def train(args):
             gt[gt > 0.5] = 1
             gt[gt <= 0.5] = 0
 
-            with torch.no_grad():
-                # image_features, patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
-                image_features, seg_patch_features = vision_learner.encode_image_learn(image)
-                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+            # image_features, patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
+            _, det_patch_features, seg_patch_features = vision_learner.encode_image_learn(image)
+            # image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
             #########################################################################
             prompts, tokenized_prompts, compound_prompts_text = prompt_learner(cls_id=None)
@@ -97,10 +100,19 @@ def train(args):
             #########################################################################
 
             # features level
-            text_probs = image_features.unsqueeze(1) @ text_features.permute(0, 2, 1)
-            text_probs = text_probs[:, 0, ...] / 0.07
-            text_probs = text_probs.squeeze()
-            image_loss = F.cross_entropy(text_probs, label.long().cuda())
+            # text_probs = image_features.unsqueeze(1) @ text_features.permute(0, 2, 1)
+            # text_probs = text_probs[:, 0, ...] / 0.07
+            # text_probs = text_probs.squeeze()
+            # image_loss = F.cross_entropy(text_probs, label.long().cuda())
+            # image_loss_list.append(image_loss.item())
+            image_loss = 0
+            for idx, patch_feature in enumerate(det_patch_features):
+                patch_feature = patch_feature / patch_feature.norm(dim=-1, keepdim=True)
+                similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
+                similarity = similarity.permute(0, 2, 1)
+                det_score = torch.mean(similarity, dim=-1)
+                det_score = det_score[:, 1]
+                image_loss = image_loss + loss_bce(det_score, label.to(device).float())
             image_loss_list.append(image_loss.item())
 
             loss = 0
@@ -119,9 +131,13 @@ def train(args):
                 loss += loss_dice(similarity_map_list[i][:, 1, :, :], gt)
                 loss += loss_dice(similarity_map_list[i][:, 0, :, :], 1 - gt)
 
+            total_loss = (loss + image_loss)
+            total_loss.requires_grad_(True)
             optimizer.zero_grad()
             seg_optimizer.zero_grad()
-            (loss + image_loss).backward()
+            det_optimizer.zero_grad()
+            total_loss.backward()
+            det_optimizer.step()
             seg_optimizer.step()
             optimizer.step()
             loss_list.append(loss.item())

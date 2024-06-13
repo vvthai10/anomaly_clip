@@ -60,6 +60,7 @@ def train(args):
     # losses
     loss_focal = FocalLoss()
     loss_dice = BinaryDiceLoss()
+    loss_bce = torch.nn.BCEWithLogitsLoss()
 
 
     model.eval()
@@ -107,7 +108,8 @@ def train(args):
                 similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
                 similarity = similarity.permute(0, 2, 1)
                 det_score = torch.mean(similarity, dim=-1)
-                image_loss = image_loss + F.cross_entropy(det_score.squeeze(), label.long().cuda())
+                det_score = det_score[:, 1]
+                image_loss = image_loss + loss_bce(det_score, label.to(device).float())
             image_loss_list.append(image_loss.item())
 
             if cls_idx > 0:
@@ -144,7 +146,6 @@ def train(args):
                 total_loss.backward()
                 optimizer.step()
                 vision_det_optimizer.step()
-                loss_list.append(loss.item())
 
         train_data.shuffle_dataset()
         train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=1, shuffle=True)

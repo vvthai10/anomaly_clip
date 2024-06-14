@@ -45,7 +45,7 @@ def train(args):
     model.to(device)
     model.visual.DAPM_replace(DPAM_layer = 20)
     ##########################################################################################
-    optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+    optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=0.001, betas=(0.5, 0.999))
 
     ##########################################################################################
     vision_learner = AnomalyCLIP_VisionLearner(features=[6, 12, 18, 24])
@@ -53,11 +53,12 @@ def train(args):
     for name, param in vision_learner.named_parameters():
         param.requires_grad = True
     ##########################################################################################
-    vision_optimizer = torch.optim.Adam(list(vision_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+    vision_optimizer = torch.optim.Adam(list(vision_learner.parameters()), lr=0.0001, betas=(0.5, 0.999))
 
     # losses
     loss_focal = FocalLoss()
     loss_dice = BinaryDiceLoss()
+    loss_bce = torch.nn.BCEWithLogitsLoss()
 
 
     model.eval()
@@ -82,7 +83,7 @@ def train(args):
             # DPAM_layer = 1, no DPAM is used
             # DPAM_layer = 20 as default
             ori_image_features, ori_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
-            det_patch_features, seg_patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
+            _, seg_patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
 
             ####################################
             prompts, tokenized_prompts, compound_prompts_text = prompt_learner(cls_id = None)
@@ -95,15 +96,17 @@ def train(args):
 
             image_features = ori_image_features / ori_image_features.norm(dim=-1, keepdim=True)
             text_probs = image_features.unsqueeze(1) @ text_features.permute(0, 2, 1)
-            text_probs = text_probs[:, 0, ...]/0.07
-            image_loss = image_loss + F.cross_entropy(text_probs.squeeze(), label.long().cuda())
+            text_probs = (text_probs / 0.07).softmax(-1)
+            text_probs = text_probs[:, 0, 1]
+            # image_loss = image_loss + F.cross_entropy(text_probs.squeeze(), label.long().cuda())
+            image_loss = image_loss + loss_bce(text_probs, label.to(device).float())
 
-            for idx, patch_feature in enumerate(det_patch_features):
-                patch_feature = patch_feature / patch_feature.norm(dim=-1, keepdim=True)
-                similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
-                similarity = similarity.permute(0, 2, 1)
-                det_score = torch.mean(similarity, dim=-1)
-                image_loss = image_loss + F.cross_entropy(det_score.squeeze(), label.long().cuda())
+            # for idx, patch_feature in enumerate(det_patch_features):
+            #     patch_feature = patch_feature / patch_feature.norm(dim=-1, keepdim=True)
+            #     similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
+            #     similarity = similarity.permute(0, 2, 1)
+            #     det_score = torch.mean(similarity, dim=-1)
+            #     image_loss = image_loss + F.cross_entropy(det_score.squeeze(), label.long().cuda())
             image_loss_list.append(image_loss.item())
             #########################################################################
             similarity_map_list = []

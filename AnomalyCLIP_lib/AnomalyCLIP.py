@@ -380,11 +380,11 @@ class VisionTransformer(nn.Module):
         pooled = self.ln_post(x_ori[:, 0, :])
 
 
-        patch_token_list = []
-        for patch_token in patch_tokens:
-            patch_token = self.ln_post(patch_token.permute(1, 0, 2)) @ self.proj  # LND -> NLD
-            patch_token_list.append(patch_token)
-        patch_tokens = patch_token_list
+        # patch_token_list = []
+        # for patch_token in patch_tokens:
+        #     patch_token = self.ln_post(patch_token.permute(1, 0, 2)) @ self.proj  # LND -> NLD
+        #     patch_token_list.append(patch_token)
+        # patch_tokens = patch_token_list
 
         #     return x_ori[0, :, :] @ self.proj, patch_tokens
 

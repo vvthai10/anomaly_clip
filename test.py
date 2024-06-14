@@ -99,8 +99,7 @@ def test(args):
 
         with torch.no_grad():
             ori_image_features, ori_patch_features = model.encode_image(image, args.features_list, DPAM_layer=20)
-            det_patch_features, seg_patch_features = vision_learner.encoder_vision(ori_image_features,
-                                                                                   ori_patch_features)
+            _, seg_patch_features = vision_learner.encoder_vision(ori_image_features,ori_patch_features)
             # image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
             image_score = 0
@@ -111,12 +110,12 @@ def test(args):
             text_probs = text_probs[:, 0, 1]
             image_score = image_score + text_probs
 
-            for idx, patch_feature in enumerate(det_patch_features):
-                patch_feature = patch_feature / patch_feature.norm(dim=-1, keepdim=True)
-                similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
-                similarity = similarity.permute(0, 2, 1)
-                det_score = torch.mean(similarity, dim=-1)
-                image_score = image_score + det_score[:,1]
+            # for idx, patch_feature in enumerate(det_patch_features):
+            #     patch_feature = patch_feature / patch_feature.norm(dim=-1, keepdim=True)
+            #     similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
+            #     similarity = similarity.permute(0, 2, 1)
+            #     det_score = torch.mean(similarity, dim=-1)
+            #     image_score = image_score + det_score[:,1]
 
             anomaly_map_list = []
             for idx, patch_feature in enumerate(seg_patch_features):

@@ -13,7 +13,7 @@ class SegAdapter(nn.Module):
     def __init__(self, c_in, bottleneck=768):
         super(SegAdapter, self).__init__()
         self.fc1 = nn.Sequential(
-            nn.Linear(768, 384, bias=False),
+            nn.Linear(1024, 768, bias=False),
             nn.LeakyReLU(inplace=False)
         )
 
@@ -48,6 +48,5 @@ class AnomalyCLIP_VisionLearner(nn.Module):
             update_patch_seg_feature = self.seg_adapters[idx].forward(patch_feature)
             update_patch_seg_features.append(update_patch_seg_feature.permute(1, 0, 2))
 
-            update_patch_det_feature = self.det_adapters[idx].forward(patch_feature)
 
         return image_features, update_patch_seg_features

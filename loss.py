@@ -85,6 +85,13 @@ class FocalLoss(nn.Module):
             loss = loss.mean()
         return loss
 
+class CrossEntropyLoss(nn.Module):
+    def __init__(self):
+        super(CrossEntropyLoss, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        loss = - torch.sum(y_true * torch.log(y_pred), dim=-1)
+        print(loss)
 
 class BinaryDiceLoss(nn.Module):
     def __init__(self):

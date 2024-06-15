@@ -4,7 +4,7 @@ import argparse
 import torch.nn.functional as F
 from prompt_ensemble import AnomalyCLIP_PromptLearner
 from vision_ensemble import AnomalyCLIP_VisionLearner
-from loss import FocalLoss, BinaryDiceLoss
+from loss import FocalLoss, BinaryDiceLoss, CrossEntropyLoss
 from utils import normalize
 from dataset import Dataset
 from logger import get_logger
@@ -58,7 +58,7 @@ def train(args):
     # losses
     loss_focal = FocalLoss()
     loss_dice = BinaryDiceLoss()
-    loss_bce = torch.nn.BCEWithLogitsLoss()
+    loss_bce = CrossEntropyLoss()
 
 
     model.eval()
@@ -83,7 +83,7 @@ def train(args):
             # DPAM_layer = 1, no DPAM is used
             # DPAM_layer = 20 as default
             ori_image_features, ori_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
-            _, seg_patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
+            image_features, seg_patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
 
             ####################################
             prompts, tokenized_prompts, compound_prompts_text = prompt_learner(cls_id = None)
@@ -94,7 +94,7 @@ def train(args):
             # Apply DPAM surgery
             image_loss = 0
 
-            image_features = ori_image_features / ori_image_features.norm(dim=-1, keepdim=True)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             text_probs = image_features.unsqueeze(1) @ text_features.permute(0, 2, 1)
             text_probs = (text_probs / 0.07).softmax(-1)
             text_probs = text_probs[:, 0, 1]

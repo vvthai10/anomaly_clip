@@ -34,9 +34,6 @@ def train(args):
     model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details = AnomalyCLIP_parameters)
     model.eval()
 
-    ori_model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device)
-    ori_model.eval()
-
     train_data = DatasetMedical(root=args.train_data_path, batch_size=args.batch_size, img_size=args.image_size, transform=preprocess, target_transform=target_transform, dataset_name = args.dataset)
     train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=1, shuffle=True)
 
@@ -52,14 +49,6 @@ def train(args):
     ##########################################################################################
     optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
 
-    ##########################################################################################
-    vision_learner = AnomalyCLIP_VisionLearner(features=[6, 12, 18, 24])
-    vision_learner.to(device)
-    for name, param in vision_learner.named_parameters():
-        param.requires_grad = True
-    ##########################################################################################
-    vision_seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
-    vision_det_optimizer = torch.optim.Adam(list(vision_learner.det_adapter.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
 
     # losses
     loss_focal = FocalLoss()
@@ -68,14 +57,10 @@ def train(args):
 
 
     model.eval()
-    ori_model.eval()
     prompt_learner.train()
-    vision_learner.train()
     for epoch in tqdm(range(args.epoch), position=0, leave=True):
         model.eval()
-        ori_model.eval()
         prompt_learner.train()
-        vision_learner.train()
         loss_list = []
         image_loss_list = []
 
@@ -93,9 +78,7 @@ def train(args):
             # DPAM_layer represents the number of layer refined by DPAM from top to bottom
             # DPAM_layer = 1, no DPAM is used
             # DPAM_layer = 20 as default
-            _, ori_seg_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
-            ori_det_patch_features = ori_model.encode_image(image)
-            det_patch_features, seg_patch_features = vision_learner.encoder_vision(ori_det_patch_features, ori_seg_patch_features)
+            image_features, seg_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
 
             ####################################
             prompts, tokenized_prompts, compound_prompts_text = prompt_learner(cls_id = None)
@@ -104,7 +87,7 @@ def train(args):
             text_features = text_features/text_features.norm(dim=-1, keepdim=True)
 
             image_loss = 0
-            image_features = det_patch_features / det_patch_features.norm(dim=-1, keepdim=True)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             anomaly_map = image_features @ text_features.permute(0, 2, 1)
             anomaly_map = (anomaly_map / 0.07)
             anomaly_map = torch.softmax(anomaly_map, dim=-1)[:, :, 1]
@@ -129,21 +112,15 @@ def train(args):
                 total_loss = loss+image_loss
                 total_loss.requires_grad_(True)
                 optimizer.zero_grad()
-                vision_seg_optimizer.zero_grad()
-                vision_det_optimizer.zero_grad()
                 total_loss.backward()
                 optimizer.step()
-                vision_seg_optimizer.step()
-                vision_det_optimizer.step()
                 loss_list.append(loss.item())
             else:
                 total_loss = image_loss
                 total_loss.requires_grad_(True)
                 optimizer.zero_grad()
-                vision_det_optimizer.zero_grad()
                 total_loss.backward()
                 optimizer.step()
-                vision_det_optimizer.step()
 
         train_data.shuffle_dataset()
         train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=1, shuffle=True)
@@ -155,8 +132,7 @@ def train(args):
         # save model
         if (epoch + 1) % args.save_freq == 0:
             ckp_path = os.path.join(args.save_path, 'epoch_' + str(epoch + 1) + '.pth')
-            torch.save({"prompt_learner": prompt_learner.state_dict(),
-                        "vision_learner": vision_learner.state_dict()}, ckp_path)
+            torch.save({"prompt_learner": prompt_learner.state_dict()}, ckp_path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser("AnomalyCLIP", add_help=True)

@@ -49,9 +49,6 @@ def test(args):
     model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details=AnomalyCLIP_parameters)
     model.eval()
 
-    ori_model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device)
-    ori_model.eval()
-
     preprocess, target_transform = get_transform(args)
     test_data = Dataset(root=args.data_path, transform=preprocess, target_transform=target_transform,
                         dataset_name=args.dataset)
@@ -101,8 +98,7 @@ def test(args):
         results[cls_name[0]]['gt_sp'].extend(items['anomaly'].detach().cpu())
 
         with torch.no_grad():
-            _, ori_seg_patch_features = model.encode_image(image, args.features_list, DPAM_layer=20)
-            ori_det_patch_features = ori_model.encode_image(image)
+            ori_det_patch_features, ori_seg_patch_features = model.encode_image(image, args.features_list, DPAM_layer=20)
             det_patch_features, seg_patch_features = vision_learner.encoder_vision(ori_det_patch_features,
                                                                                    ori_seg_patch_features)
 
@@ -110,8 +106,7 @@ def test(args):
             image_features = det_patch_features / det_patch_features.norm(dim=-1, keepdim=True)
             anomaly_map = image_features @ text_features.permute(0, 2, 1)
             anomaly_map = (anomaly_map / 0.07)
-            anomaly_map = torch.softmax(anomaly_map, dim=-1)[:, :, 1]
-            anomaly_score = torch.mean(anomaly_map, dim=-1)
+            anomaly_score = torch.softmax(anomaly_map, dim=-1)[:, 0, 1]
             image_score = image_score + anomaly_score
 
             anomaly_map_list = []

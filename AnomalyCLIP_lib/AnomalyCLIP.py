@@ -376,8 +376,9 @@ class VisionTransformer(nn.Module):
         x = x.permute(1, 0, 2)  # NLD -> LND
         [x, x_ori], patch_tokens = self.transformer(x, features_list, DPAM_layer = DPAM_layer, ffn = ffn)
 
-        # x_ori = x_ori.permute(1, 0, 2)
-        # pooled = self.ln_post(x_ori[:, 0, :])
+        x[0] = x_ori[0]
+        x = x.permute(1, 0, 2)
+        pooled = self.ln_post(x)
 
 
         # patch_token_list = []
@@ -388,7 +389,7 @@ class VisionTransformer(nn.Module):
 
         #     return x_ori[0, :, :] @ self.proj, patch_tokens
 
-        return x_ori[0, :, :] @ self.proj, patch_tokens
+        return pooled @ self.proj, patch_tokens
 
         # return x
 

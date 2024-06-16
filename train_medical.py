@@ -34,9 +34,6 @@ def train(args):
     model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details = AnomalyCLIP_parameters)
     model.eval()
 
-    ori_model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device)
-    ori_model.eval()
-
     train_data = DatasetMedical(root=args.train_data_path, batch_size=args.batch_size, img_size=args.image_size, transform=preprocess, target_transform=target_transform, dataset_name = args.dataset)
     train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=1, shuffle=True)
 
@@ -68,12 +65,10 @@ def train(args):
 
 
     model.eval()
-    ori_model.eval()
     prompt_learner.train()
     vision_learner.train()
     for epoch in tqdm(range(args.epoch), position=0, leave=True):
         model.eval()
-        ori_model.eval()
         prompt_learner.train()
         vision_learner.train()
         loss_list = []
@@ -93,8 +88,7 @@ def train(args):
             # DPAM_layer represents the number of layer refined by DPAM from top to bottom
             # DPAM_layer = 1, no DPAM is used
             # DPAM_layer = 20 as default
-            _, ori_seg_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
-            ori_det_patch_features = ori_model.encode_image(image)
+            ori_det_patch_features, ori_seg_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
             det_patch_features, seg_patch_features = vision_learner.encoder_vision(ori_det_patch_features, ori_seg_patch_features)
 
             ####################################
@@ -107,9 +101,9 @@ def train(args):
             image_features = det_patch_features / det_patch_features.norm(dim=-1, keepdim=True)
             anomaly_map = image_features @ text_features.permute(0, 2, 1)
             anomaly_map = (anomaly_map / 0.07)
-            anomaly_map = torch.softmax(anomaly_map, dim=-1)[:, :, 1]
-            anomaly_score = torch.mean(anomaly_map, dim=-1)
+            anomaly_score = torch.softmax(anomaly_map, dim=-1)[:, 0, 1]
             image_loss += loss_bce(anomaly_score, label.to(device).float())
+            image_loss_list.append(image_loss.item())
 
             if cls_idx > 0:
                 similarity_map_list = []

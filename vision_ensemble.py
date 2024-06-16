@@ -42,11 +42,13 @@ class AnomalyCLIP_VisionLearner(nn.Module):
         self.seg_adapters = nn.ModuleList([SegAdapter(1024, bottleneck=768) for i in range(len(features))])
         self.det_adapter = DetAdapter(1024, bottleneck=768)
 
-    def encoder_vision(self, image_features, patch_features):
-        update_image_features = self.det_adapter(image_features)
+    def encoder_vision(self, det_patch_features, seg_patch_features):
+
+        update_patch_det_feature = self.det_adapter(det_patch_features)
+
         update_patch_seg_features = []
-        for idx, patch_feature in enumerate(patch_features):
+        for idx, patch_feature in enumerate(seg_patch_features):
             update_patch_seg_feature = self.seg_adapters[idx].forward(patch_feature)
             update_patch_seg_features.append(update_patch_seg_feature.permute(1, 0, 2))
 
-        return update_image_features, update_patch_seg_features
+        return update_patch_det_feature, update_patch_seg_features

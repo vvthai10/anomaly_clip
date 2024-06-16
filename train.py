@@ -58,7 +58,7 @@ def train(args):
     # losses
     loss_focal = FocalLoss()
     loss_dice = BinaryDiceLoss()
-    loss_bce = CrossEntropyLoss()
+    loss_bce = torch.nn.BCEWithLogitsLoss()
 
 
     model.eval()

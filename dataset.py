@@ -121,10 +121,10 @@ class DatasetMedical(data.Dataset):
 
         batch_mask = []
         for i in range(batch):
-            try:
+            if y[i] == 1:
                 img_mask = np.array(Image.open(os.path.join(self.root, mask[i])).convert('L')) > 0
                 img_mask = Image.fromarray(img_mask.astype(np.uint8) * 255, mode='L')
-            except:
+            else:
                 img_mask = Image.fromarray(np.zeros((self.img_size, self.img_size)), mode='L')
 
             img_mask = self.target_transform(img_mask) if self.target_transform is not None and img_mask is not None else img_mask

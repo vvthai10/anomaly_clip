@@ -13,6 +13,7 @@ import numpy as np
 import os
 import random
 from utils import get_transform
+from scipy.ndimage import gaussian_filter
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -32,6 +33,9 @@ def train(args):
 
     model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device, design_details = AnomalyCLIP_parameters)
     model.eval()
+
+    ori_model, _ = AnomalyCLIP_lib.load("ViT-L/14@336px", device=device)
+    ori_model.eval()
 
     train_data = DatasetMedical(root=args.train_data_path, batch_size=args.batch_size, img_size=args.image_size, transform=preprocess, target_transform=target_transform, dataset_name = args.dataset)
     train_dataloader = torch.utils.data.DataLoader(train_data, batch_size=1, shuffle=True)
@@ -55,7 +59,7 @@ def train(args):
         param.requires_grad = True
     ##########################################################################################
     vision_seg_optimizer = torch.optim.Adam(list(vision_learner.seg_adapters.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
-    vision_det_optimizer = torch.optim.Adam(list(vision_learner.det_adapters.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
+    vision_det_optimizer = torch.optim.Adam(list(vision_learner.det_adapter.parameters()), lr=args.learning_rate, betas=(0.5, 0.999))
 
     # losses
     loss_focal = FocalLoss()
@@ -64,11 +68,14 @@ def train(args):
 
 
     model.eval()
+    ori_model.eval()
     prompt_learner.train()
     vision_learner.train()
     for epoch in tqdm(range(args.epoch), position=0, leave=True):
         model.eval()
+        ori_model.eval()
         prompt_learner.train()
+        vision_learner.train()
         loss_list = []
         image_loss_list = []
 
@@ -86,8 +93,9 @@ def train(args):
             # DPAM_layer represents the number of layer refined by DPAM from top to bottom
             # DPAM_layer = 1, no DPAM is used
             # DPAM_layer = 20 as default
-            ori_image_features, ori_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
-            det_patch_features, seg_patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
+            _, ori_seg_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
+            ori_det_patch_features = ori_model.encode_image(image)
+            det_patch_features, seg_patch_features = vision_learner.encoder_vision(ori_det_patch_features, ori_seg_patch_features)
 
             ####################################
             prompts, tokenized_prompts, compound_prompts_text = prompt_learner(cls_id = None)
@@ -95,26 +103,16 @@ def train(args):
             text_features = torch.stack(torch.chunk(text_features, dim = 0, chunks = 2), dim = 1)
             text_features = text_features/text_features.norm(dim=-1, keepdim=True)
 
-            # Apply DPAM surgery
             image_loss = 0
-
-            image_features = ori_image_features / ori_image_features.norm(dim=-1, keepdim=True)
-            text_probs = image_features.unsqueeze(1) @ text_features.permute(0, 2, 1)
-            text_probs = text_probs[:, 0, ...]/0.07
-            image_loss = image_loss + F.cross_entropy(text_probs.squeeze(), label.long().cuda())
-
-            for idx, patch_feature in enumerate(det_patch_features):
-                patch_feature = patch_feature / patch_feature.norm(dim=-1, keepdim=True)
-                similarity, _ = AnomalyCLIP_lib.compute_similarity(patch_feature, text_features[0])
-                similarity = similarity.permute(0, 2, 1)
-                det_score = torch.mean(similarity, dim=-1)
-                det_score = det_score[:, 1]
-                image_loss = image_loss + loss_bce(det_score, label.to(device).float())
-            image_loss_list.append(image_loss.item())
+            image_features = det_patch_features / det_patch_features.norm(dim=-1, keepdim=True)
+            anomaly_map = image_features @ text_features.permute(0, 2, 1)
+            anomaly_map = (anomaly_map / 0.07)
+            anomaly_map = torch.softmax(anomaly_map, dim=-1)[:, :, 1]
+            anomaly_score = torch.mean(anomaly_map, dim=-1)
+            image_loss += loss_bce(anomaly_score, label.to(device).float())
 
             if cls_idx > 0:
                 similarity_map_list = []
-                # similarity_map_list.append(similarity_map)
                 for idx, patch_feature in enumerate(seg_patch_features):
                     if idx >= args.feature_map_layer[0]:
                         patch_feature = patch_feature / patch_feature.norm(dim = -1, keepdim = True)

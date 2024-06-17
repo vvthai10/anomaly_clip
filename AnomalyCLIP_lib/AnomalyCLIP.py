@@ -262,10 +262,10 @@ class Transformer(nn.Module):
         self.text_layer = text_layer
         self.design_deatails = design_details
         print("text_layer", self.text_layer)
-        if self.text_layer and (design_details is not None):
-            self.resblocks = nn.ModuleList([ResidualAttentionBlock_learnable_token(width, heads, attn_mask, design_details, text_layer, i=i) for i in range(layers)])
-        else:
-            self.resblocks = nn.ModuleList([ResidualAttentionBlock(width, heads, attn_mask,) for i in range(layers)])
+        # if self.text_layer and (design_details is not None):
+        #     self.resblocks = nn.ModuleList([ResidualAttentionBlock_learnable_token(width, heads, attn_mask, design_details, text_layer, i=i) for i in range(layers)])
+        # else:
+        self.resblocks = nn.ModuleList([ResidualAttentionBlock(width, heads, attn_mask,) for i in range(layers)])
 
     def ori_CLIP_with_patch_forward(self, x, out_layers):
         idx = 0
@@ -283,17 +283,19 @@ class Transformer(nn.Module):
 
     def AnomalyCLIP_forward(self, x, out_layers, ffn):
         idx = 0
-        out_tokens = []
+        det_out_tokens = []
+        seg_out_tokens = []
         for r in self.resblocks:
             idx += 1
             x = r(x, ffn = ffn)
             # print("out_layers", out_layers, idx)
             if idx in out_layers:
                 if isinstance(x, list):
-                    out_tokens.append(x[0])
-                else:
-                    out_tokens.append(x)
-        return x, out_tokens
+                    seg_out_tokens.append(x[0])
+                    det_out_tokens.append(x[1])
+                # else:
+                #     out_tokens.append(x)
+        return x, [det_out_tokens, seg_out_tokens]
 
     def forward(self, x: torch.Tensor, out_layers = [6, 12, 18, 24], DPAM_layer = None, ffn = False):
         # visual encoder forward
@@ -308,15 +310,15 @@ class Transformer(nn.Module):
                 return x, out_tokens
         # text encoder forward
         # ori text embedding
-        elif self.design_deatails is None:
+        else:
             for idx, r in enumerate(self.resblocks):
                 x = r(x)
             return x
         # insert learnable text embedding
-        elif self.design_deatails is not None:
-            for idx, r in enumerate(self.resblocks):
-                x = r(x)
-            return x[0]
+        # elif self.design_deatails is not None:
+        #     for idx, r in enumerate(self.resblocks):
+        #         x = r(x)
+        #     return x[0]
     def get_cast_dtype(self) -> torch.dtype:
         return self.resblocks[0].mlp.c_fc.weight.dtype
 

@@ -48,7 +48,7 @@ def train(args):
     optimizer = torch.optim.Adam(list(prompt_learner.parameters()), lr=0.001, betas=(0.5, 0.999))
 
     ##########################################################################################
-    vision_learner = AnomalyCLIP_VisionLearner(features=[6, 12, 18, 24])
+    vision_learner = AnomalyCLIP_VisionLearner(model=model, features=[6, 12, 18, 24])
     vision_learner.to(device)
     for name, param in vision_learner.named_parameters():
         param.requires_grad = True
@@ -83,8 +83,9 @@ def train(args):
             # DPAM_layer = 1, no DPAM is used
             # DPAM_layer = 20 as default
             ori_image_features, ori_patch_features = model.encode_image(image, args.features_list, DPAM_layer = 20)
-            image_features, seg_patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
-
+            # image_features, seg_patch_features = vision_learner.encoder_vision(ori_image_features, ori_patch_features)
+            image_features = None
+            seg_patch_features = None
             ####################################
             prompts, tokenized_prompts, compound_prompts_text = prompt_learner(cls_id = None)
             text_features = model.encode_text_learn(prompts, tokenized_prompts, compound_prompts_text).float()

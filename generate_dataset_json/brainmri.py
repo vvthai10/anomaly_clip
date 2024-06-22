@@ -12,7 +12,7 @@ class IsbiSolver(object):
     def run(self):
         info = dict(train={}, test={})
         for cls_name in self.CLSNAMES:
-            cls_dir = f'{self.root}/brain_tumor_dataset'
+            cls_dir = f'{self.root}'
             for phase in ['test']:
                 cls_info = []
                 species = os.listdir(f'{cls_dir}')
@@ -34,5 +34,5 @@ class IsbiSolver(object):
             f.write(json.dumps(info, indent=4) + "\n")
 
 if __name__ == '__main__':
-    runner = IsbiSolver(root='/remote-home/iot_zhouqihang/data/BrainMRI')
+    runner = IsbiSolver(root='./data/Brain_AD')
     runner.run()

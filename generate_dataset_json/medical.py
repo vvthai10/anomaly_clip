@@ -4,9 +4,9 @@ import json
 
 class MpddSolver(object):
     # CLSNAMES = ['Chest_AD']
-    CLSNAMES = ['Brain_AD', 'Histopathology_AD', 'Liver_AD', 'Retina_OCT2017_AD', 'Retina_RESC_AD']
-    CLSNAMES_HAFT = ['chest', 'histopathology', 'retina_oct']
-
+    # CLSNAMES = ['Brain_AD', 'Histopathology_AD', 'Liver_AD', 'Retina_OCT2017_AD', 'Retina_RESC_AD']
+    # CLSNAMES_HAFT = ['chest', 'histopathology', 'retina_oct']
+    CLSNAMES = ['brain', 'liver', 'retina_resc']
     def __init__(self, root='./data/medical'):
         self.root = root
         self.meta_path = f'{root}/meta.json'
@@ -17,7 +17,7 @@ class MpddSolver(object):
         normal_samples = 0
         for cls_name in self.CLSNAMES:
             cls_dir = f'{self.root}/{cls_name}'
-            for phase in ['test']:
+            for phase in ['train']:
                 cls_info = []
                 species = os.listdir(f'{cls_dir}/{phase}')
                 for specie in species:
